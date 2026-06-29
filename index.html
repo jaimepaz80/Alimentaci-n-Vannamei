@@ -2,25 +2,28 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-width=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sincronización de Alimentación y Crecimiento</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script>
     <style>
         body { background-color: #f8f9fa; padding: 20px; font-family: Arial, sans-serif; }
         .card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
         .table-responsive { max-height: 500px; overflow-y: auto; }
         thead { position: sticky; top: 0; background-color: #343a40; color: white; }
+        .math-model { background-color: #e9ecef; padding: 10px; border-radius: 5px; font-size: 0.9em; text-align: center;}
     </style>
 </head>
 <body>
 
-<div class="container">
+<div class="container-fluid">
     <h2 class="text-center mb-4">Proyección de Alimentación y Sincronización Horaria</h2>
 
     <div class="row">
-        <div class="col-md-4">
+        <div class="col-lg-3 col-md-4">
             <div class="card p-3">
                 <h4>Parámetros de Cultivo</h4>
                 <div class="mb-3">
@@ -43,33 +46,56 @@
                     <label>FCA esperado</label>
                     <input type="number" id="fca" class="form-control" value="1.5" step="0.01" min="0.1">
                 </div>
-                <button class="btn btn-primary w-100 mb-2" onclick="generarTablas()">Generar Tablas</button>
+                <button class="btn btn-primary w-100 mb-2" onclick="generarTablas()">Generar Proyección</button>
                 <button class="btn btn-success w-100" id="btnDescargar" style="display:none;" onclick="descargarPDF()">Descargar en PDF</button>
+            </div>
+            
+            <div class="card p-3" id="tabla2Container" style="display:none;">
+                <h5 class="text-center">Distribución Horaria</h5>
+                <p class="text-muted small text-center">Calculado para el Día 1</p>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm table-striped" id="tablaHoras">
+                        <thead class="table-dark text-center">
+                            <tr>
+                                <th>Hora</th>
+                                <th>%</th>
+                                <th>Suministro</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bodyTablaHoras" class="text-center"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
-        <div class="col-md-8">
-            <div class="card p-3" id="tabla2Container" style="display:none;">
-                <h4>Ración Diaria para el Peso Actual (Distribución Horaria)</h4>
-                <p>Calculado sobre el requerimiento del primer día.</p>
-                <div class="table-responsive">
-                    <table class="table table-bordered table-striped" id="tablaHoras">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>Hora</th>
-                                <th>% de Ración</th>
-                                <th>Cantidad a Suministrar (g)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="bodyTablaHoras"></tbody>
-                    </table>
+        <div class="col-lg-9 col-md-8">
+            <div class="card p-3" id="graficoContainer" style="display:none;">
+                <h4>Curva de Crecimiento (Modelo TGC)</h4>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="math-model border-start border-primary border-4">
+                            <strong>Fase < 7.5g (Exp: 0.416, Coef: 0.151)</strong><br>
+                            P<sub>n</sub> = [ P<sub>actual</sub><sup>0.416</sup> + (0.00151 &times; T) ] <sup>(1 / 0.416)</sup>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="math-model border-start border-success border-4">
+                            <strong>Fase &ge; 7.5g (Exp: 0.952, Coef: 0.807)</strong><br>
+                            P<sub>n</sub> = [ P<sub>actual</sub><sup>0.952</sup> + (0.00807 &times; T) ] <sup>(1 / 0.952)</sup>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="position: relative; height:400px; width:100%">
+                    <canvas id="graficoCrecimiento"></canvas>
                 </div>
             </div>
             
             <div class="card p-3" id="tabla1Container" style="display:none;">
                 <h4>Proyección Hasta Cosecha</h4>
                 <div class="table-responsive">
-                    <table class="table table-bordered table-striped" id="tablaCrecimiento">
+                    <table class="table table-bordered table-striped text-center" id="tablaCrecimiento">
                         <thead class="table-dark">
                             <tr>
                                 <th>Día</th>
@@ -89,31 +115,24 @@
 
 <script>
     const horarioAlimentacion = [
-        { hora: "12:00 am", porc: 0.018 },
-        { hora: "02:00 am", porc: 0.045 },
-        { hora: "04:00 am", porc: 0.054 },
-        { hora: "06:00 am", porc: 0.072 },
-        { hora: "08:00 am", porc: 0.018 },
-        { hora: "10:00 am", porc: 0.036 },
-        { hora: "12:00 pm", porc: 0.234 },
-        { hora: "02:00 pm", porc: 0.180 },
-        { hora: "04:00 pm", porc: 0.108 },
-        { hora: "06:00 pm", porc: 0.090 },
-        { hora: "08:00 pm", porc: 0.072 },
-        { hora: "10:00 pm", porc: 0.072 }
+        { hora: "12:00 am", porc: 0.018 }, { hora: "02:00 am", porc: 0.045 },
+        { hora: "04:00 am", porc: 0.054 }, { hora: "06:00 am", porc: 0.072 },
+        { hora: "08:00 am", porc: 0.018 }, { hora: "10:00 am", porc: 0.036 },
+        { hora: "12:00 pm", porc: 0.234 }, { hora: "02:00 pm", porc: 0.180 },
+        { hora: "04:00 pm", porc: 0.108 }, { hora: "06:00 pm", porc: 0.090 },
+        { hora: "08:00 pm", porc: 0.072 }, { hora: "10:00 pm", porc: 0.072 }
     ];
 
     let pdfDataCrecimiento = [];
     let pdfDataHoras = [];
+    let chartCrecimiento = null;
 
     function calcularGananciaTGC(peso, temp) {
         let exp, tgc;
         if (peso < 7.5) {
-            exp = 0.416;
-            tgc = 0.151;
+            exp = 0.416; tgc = 0.151;
         } else {
-            exp = 0.952;
-            tgc = 0.807;
+            exp = 0.952; tgc = 0.807;
         }
         return Math.pow(Math.pow(peso, exp) + (tgc / 100) * temp, 1 / exp);
     }
@@ -140,14 +159,21 @@
 
         let dia = 1;
         let alimentoDiaUnoGramos = 0;
+        
+        // Arreglos para el gráfico
+        let arrayDias = [];
+        let arrayPesos = [];
 
         // Tabla 1: Proyección
         while (pesoActual < pesoCosecha) {
+            arrayDias.push(dia);
+            arrayPesos.push(pesoActual);
+
             let pesoNuevo = calcularGananciaTGC(pesoActual, temperatura);
             let pesoGanado = pesoNuevo - pesoActual;
             
             let alimentoDiarioGramosCamaron = pesoGanado * fca;
-            let alimentoTotalDiarioGramos = alimentoDiarioGramosCamaron * cantidad; // Cálculo directo en gramos
+            let alimentoTotalDiarioGramos = alimentoDiarioGramosCamaron * cantidad;
             let tasaAlimentacion = (alimentoDiarioGramosCamaron / pesoActual) * 100;
 
             if (dia === 1) {
@@ -164,20 +190,16 @@
             bodyCrecimiento.innerHTML += tr;
 
             pdfDataCrecimiento.push([
-                dia, 
-                pesoActual.toFixed(2), 
-                pesoGanado.toFixed(3), 
-                alimentoTotalDiarioGramos.toFixed(2), 
-                tasaAlimentacion.toFixed(2) + "%"
+                dia, pesoActual.toFixed(2), pesoGanado.toFixed(3), 
+                alimentoTotalDiarioGramos.toFixed(2), tasaAlimentacion.toFixed(2) + "%"
             ]);
 
             pesoActual = pesoNuevo;
             dia++;
-            
             if(dia > 365) break; 
         }
 
-        // Tabla 2: Distribución Horaria para el Peso Actual
+        // Tabla 2: Distribución Horaria
         let totalChequeo = 0;
         horarioAlimentacion.forEach(item => {
             let cantidadSuministrar = alimentoDiaUnoGramos * item.porc;
@@ -190,52 +212,131 @@
             </tr>`;
             bodyHoras.innerHTML += tr;
 
-            pdfDataHoras.push([
-                item.hora, 
-                (item.porc * 100).toFixed(1) + "%", 
-                cantidadSuministrar.toFixed(2)
-            ]);
+            pdfDataHoras.push([item.hora, (item.porc * 100).toFixed(1) + "%", cantidadSuministrar.toFixed(2)]);
         });
 
-        // Totales Tabla 2
         bodyHoras.innerHTML += `<tr class="table-secondary fw-bold">
-            <td>TOTAL</td>
-            <td>100.0%</td>
-            <td>${totalChequeo.toFixed(2)} g</td>
+            <td>TOTAL</td><td>100.0%</td><td>${totalChequeo.toFixed(2)} g</td>
         </tr>`;
         pdfDataHoras.push(["TOTAL", "100.0%", totalChequeo.toFixed(2)]);
 
+        // Mostrar contenedores
         document.getElementById('tabla1Container').style.display = "block";
         document.getElementById('tabla2Container').style.display = "block";
+        document.getElementById('graficoContainer').style.display = "block";
         document.getElementById('btnDescargar').style.display = "block";
+
+        // Renderizar el gráfico
+        renderizarGrafico(arrayDias, arrayPesos);
+    }
+
+    function renderizarGrafico(dias, pesos) {
+        const ctx = document.getElementById('graficoCrecimiento').getContext('2d');
+        
+        if (chartCrecimiento) {
+            chartCrecimiento.destroy();
+        }
+
+        chartCrecimiento = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dias,
+                datasets: [{
+                    label: 'Peso del Camarón (g)',
+                    data: pesos,
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13, 110, 253, 0.2)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    pointHitRadius: 10
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false, // Fundamental para que html2canvas o toDataURL lo capturen instantáneamente
+                plugins: {
+                    legend: { position: 'top' },
+                    annotation: {
+                        annotations: {
+                            line1: {
+                                type: 'line',
+                                yMin: 7.5,
+                                yMax: 7.5,
+                                borderColor: 'rgb(255, 99, 132)',
+                                borderWidth: 2,
+                                borderDash: [5, 5],
+                                label: {
+                                    content: 'Punto de Inflexión (7.5 g)',
+                                    display: true,
+                                    position: 'start',
+                                    backgroundColor: 'rgba(255, 99, 132, 0.8)'
+                                }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Días de Cultivo', font: { weight: 'bold' } }
+                    },
+                    y: {
+                        title: { display: true, text: 'Peso (g)', font: { weight: 'bold' } },
+                        min: 0
+                    }
+                }
+            }
+        });
     }
 
     function descargarPDF() {
         const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
+        const doc = new jsPDF('p', 'mm', 'a4');
+        const anchoPagina = doc.internal.pageSize.getWidth();
 
-        // Título del reporte
-        doc.setFontSize(14);
-        doc.text("Reporte Técnico: Proyección y Sincronización de Alimentación", 14, 15);
+        // Encabezado
+        doc.setFontSize(16);
+        doc.setFont("helvetica", "bold");
+        doc.text("Reporte: Proyección y Sincronización de Alimentación", anchoPagina / 2, 15, { align: "center" });
 
-        // Tabla Horaria
-        doc.setFontSize(11);
-        doc.text("Ración Diaria para el Peso Actual (Distribución Horaria)", 14, 25);
+        // 1. Tabla Horaria
+        doc.setFontSize(12);
+        doc.text("Distribución Horaria (Día 1)", 14, 25);
         
         doc.autoTable({
-            startY: 30,
-            head: [['Hora', '% de Ración', 'Cantidad a Suministrar (g)']],
+            startY: 28,
+            head: [['Hora', '% de Ración', 'Suministro (g)']],
             body: pdfDataHoras,
             theme: 'grid',
-            headStyles: { fillColor: [52, 58, 64] }
+            headStyles: { fillColor: [52, 58, 64] },
+            margin: { left: 14, right: 100 } // La hacemos más angosta para dejar espacio o centrar
         });
 
-        // Tabla de Proyección
-        let finalY = doc.lastAutoTable.finalY || 30;
-        doc.text("Proyección Hasta Cosecha (Modelado TGC)", 14, finalY + 10);
+        // 2. Gráfico (Capturado del Canvas)
+        let finalYHoras = doc.lastAutoTable.finalY || 30;
+        const canvas = document.getElementById('graficoCrecimiento');
+        const imgData = canvas.toDataURL('image/png', 1.0);
+        
+        // Modelos Matemáticos Texto en PDF
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.text("Modelos Matemáticos aplicados (TGC):", 14, finalYHoras + 10);
+        doc.text("Fase < 7.5g: P_n = [P_actual^0.416 + (0.00151 * T)]^(1/0.416)", 14, finalYHoras + 15);
+        doc.text("Fase >= 7.5g: P_n = [P_actual^0.952 + (0.00807 * T)]^(1/0.952)", 14, finalYHoras + 20);
+
+        // Insertar imagen del gráfico en el PDF
+        doc.addImage(imgData, 'PNG', 14, finalYHoras + 25, 180, 80);
+
+        // 3. Tabla de Proyección (Forzamos a nueva página si no hay espacio)
+        doc.addPage();
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("Proyección Hasta Cosecha (Modelado TGC)", 14, 15);
 
         doc.autoTable({
-            startY: finalY + 15,
+            startY: 20,
             head: [['Día', 'Peso (g)', 'Ganancia (g)', 'Alimento Diario (g)', '% Tasa']],
             body: pdfDataCrecimiento,
             theme: 'grid',
