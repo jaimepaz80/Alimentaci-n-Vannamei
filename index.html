@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-width=1.0">
+    <title>Sincronización de Alimentación y Crecimiento</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body { background-color: #f8f9fa; padding: 20px; font-family: Arial, sans-serif; }
+        .card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .table-responsive { max-height: 500px; overflow-y: auto; }
+        thead { position: sticky; top: 0; background-color: #343a40; color: white; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 class="text-center mb-4">Proyección de Alimentación y Sincronización Horaria</h2>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card p-3">
+                <h4>Parámetros de Cultivo</h4>
+                <div class="mb-3">
+                    <label>Cantidad de camarones</label>
+                    <input type="number" id="cantidad" class="form-control" value="100000" step="1" min="1">
+                </div>
+                <div class="mb-3">
+                    <label>Peso actual (g)</label>
+                    <input type="number" id="pesoActual" class="form-control" value="2.5" step="0.01" min="0.01">
+                </div>
+                <div class="mb-3">
+                    <label>Peso de cosecha (g)</label>
+                    <input type="number" id="pesoCosecha" class="form-control" value="20.0" step="0.1" min="0.1">
+                </div>
+                <div class="mb-3">
+                    <label>Temperatura (°C)</label>
+                    <input type="number" id="temperatura" class="form-control" value="29.5" step="0.1" min="20.0">
+                </div>
+                <div class="mb-3">
+                    <label>FCA esperado</label>
+                    <input type="number" id="fca" class="form-control" value="1.5" step="0.01" min="0.1">
+                </div>
+                <button class="btn btn-primary w-100 mb-2" onclick="generarTablas()">Generar Tablas</button>
+                <button class="btn btn-success w-100" id="btnDescargar" style="display:none;" onclick="descargarPDF()">Descargar en PDF</button>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card p-3" id="tabla2Container" style="display:none;">
+                <h4>Ración Diaria para el Peso Actual (Distribución Horaria)</h4>
+                <p>Calculado sobre el requerimiento del primer día.</p>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-striped" id="tablaHoras">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Hora</th>
+                                <th>% de Ración</th>
+                                <th>Cantidad a Suministrar (kg)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bodyTablaHoras"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="card p-3" id="tabla1Container" style="display:none;">
+                <h4>Proyección Hasta Cosecha</h4>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-striped" id="tablaCrecimiento">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Día</th>
+                                <th>Peso Promedio (g)</th>
+                                <th>Peso Ganado (g)</th>
+                                <th>Alimento Total Diario (kg)</th>
+                                <th>% Tasa de Alimentación</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bodyTablaCrecimiento"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Porcentajes de ración diaria basados en cronograma de distribución
+    const horarioAlimentacion = [
+        { hora: "12:00 am", porc: 0.018 },
+        { hora: "02:00 am", porc: 0.045 },
+        { hora: "04:00 am", porc: 0.054 },
+        { hora: "06:00 am", porc: 0.072 },
+        { hora: "08:00 am", porc: 0.018 },
+        { hora: "10:00 am", porc: 0.036 },
+        { hora: "12:00 pm", porc: 0.234 },
+        { hora: "02:00 pm", porc: 0.180 },
+        { hora: "04:00 pm", porc: 0.108 },
+        { hora: "06:00 pm", porc: 0.090 },
+        { hora: "08:00 pm", porc: 0.072 },
+        { hora: "10:00 pm", porc: 0.072 }
+    ];
+
+    let pdfDataCrecimiento = [];
+    let pdfDataHoras = [];
+
+    function calcularGananciaTGC(peso, temp) {
+        // Modelo TGC Optimizando Stanzas (Powell et al., 2019 Litopenaeus vannamei)
+        let exp, tgc;
+        if (peso < 7.5) {
+            exp = 0.416;
+            tgc = 0.151;
+        } else {
+            exp = 0.952;
+            tgc = 0.807;
+        }
+        return Math.pow(Math.pow(peso, exp) + (tgc / 100) * temp, 1 / exp);
+    }
+
+    function generarTablas() {
+        const cantidad = parseFloat(document.getElementById('cantidad').value);
+        let pesoActual = parseFloat(document.getElementById('pesoActual').value);
+        const pesoCosecha = parseFloat(document.getElementById('pesoCosecha').value);
+        const temperatura = parseFloat(document.getElementById('temperatura').value);
+        const fca = parseFloat(document.getElementById('fca').value);
+
+        if (isNaN(cantidad) || isNaN(pesoActual) || isNaN(pesoCosecha) || isNaN(temperatura) || isNaN(fca) || pesoActual >= pesoCosecha) {
+            alert("Por favor revise los parámetros de entrada. El peso actual debe ser menor al peso de cosecha.");
+            return;
+        }
+
+        const bodyCrecimiento = document.getElementById('bodyTablaCrecimiento');
+        const bodyHoras = document.getElementById('bodyTablaHoras');
+        bodyCrecimiento.innerHTML = "";
+        bodyHoras.innerHTML = "";
+        
+        pdfDataCrecimiento = [];
+        pdfDataHoras = [];
+
+        let dia = 1;
+        let alimentoDiaUnoKg = 0;
+
+        // Calculo de Tabla 1: Proyección
+        while (pesoActual < pesoCosecha) {
+            let pesoNuevo = calcularGananciaTGC(pesoActual, temperatura);
+            let pesoGanado = pesoNuevo - pesoActual;
+            
+            // Cantidad de alimento total = Peso ganado * FCA * Num Camarones (kg)
+            let alimentoDiarioGramosCamaron = pesoGanado * fca;
+            let alimentoTotalDiarioKg = (alimentoDiarioGramosCamaron * cantidad) / 1000;
+            let tasaAlimentacion = (alimentoDiarioGramosCamaron / pesoActual) * 100;
+
+            if (dia === 1) {
+                alimentoDiaUnoKg = alimentoTotalDiarioKg;
+            }
+
+            // Inserción en Tabla HTML
+            let tr = `<tr>
+                <td>${dia}</td>
+                <td>${pesoActual.toFixed(2)}</td>
+                <td>${pesoGanado.toFixed(3)}</td>
+                <td>${alimentoTotalDiarioKg.toFixed(2)}</td>
+                <td>${tasaAlimentacion.toFixed(2)}%</td>
+            </tr>`;
+            bodyCrecimiento.innerHTML += tr;
+
+            // Almacenar para PDF
+            pdfDataCrecimiento.push([
+                dia, 
+                pesoActual.toFixed(2), 
+                pesoGanado.toFixed(3), 
+                alimentoTotalDiarioKg.toFixed(2), 
+                tasaAlimentacion.toFixed(2) + "%"
+            ]);
+
+            pesoActual = pesoNuevo;
+            dia++;
+            
+            if(dia > 365) break; // Límite de seguridad
+        }
+
+        // Cálculo de Tabla 2: Horarios para el Peso Actual (Día 1)
+        let totalChequeo = 0;
+        horarioAlimentacion.forEach(item => {
+            let cantidadSuministrar = alimentoDiaUnoKg * item.porc;
+            totalChequeo += cantidadSuministrar;
+
+            let tr = `<tr>
+                <td>${item.hora}</td>
+                <td>${(item.porc * 100).toFixed(1)}%</td>
+                <td>${cantidadSuministrar.toFixed(2)} kg</td>
+            </tr>`;
+            bodyHoras.innerHTML += tr;
+
+            pdfDataHoras.push([
+                item.hora, 
+                (item.porc * 100).toFixed(1) + "%", 
+                cantidadSuministrar.toFixed(2)
+            ]);
+        });
+
+        // Totales Tabla 2
+        bodyHoras.innerHTML += `<tr class="table-secondary fw-bold">
+            <td>TOTAL</td>
+            <td>100.0%</td>
+            <td>${totalChequeo.toFixed(2)} kg</td>
+        </tr>`;
+        pdfDataHoras.push(["TOTAL", "100.0%", totalChequeo.toFixed(2)]);
+
+        document.getElementById('tabla1Container').style.display = "block";
+        document.getElementById('tabla2Container').style.display = "block";
+        document.getElementById('btnDescargar').style.display = "block";
+    }
+
+    function descargarPDF() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        // Titulo general
+        doc.setFontSize(14);
+        doc.text("Reporte Técnico: Proyección y Sincronización de Alimentación", 14, 15);
+
+        // Tabla de Distribución Horaria
+        doc.setFontSize(11);
+        doc.text("Ración Diaria para el Peso Actual (Distribución Horaria)", 14, 25);
+        
+        doc.autoTable({
+            startY: 30,
+            head: [['Hora', '% de Ración', 'Cantidad a Suministrar (kg)']],
+            body: pdfDataHoras,
+            theme: 'grid',
+            headStyles: { fillColor: [52, 58, 64] }
+        });
+
+        // Tabla de Proyección
+        let finalY = doc.lastAutoTable.finalY || 30;
+        doc.text("Proyección Hasta Cosecha (Modelado TGC)", 14, finalY + 10);
+
+        doc.autoTable({
+            startY: finalY + 15,
+            head: [['Día', 'Peso (g)', 'Ganancia (g)', 'Alimento Diario (kg)', '% Tasa']],
+            body: pdfDataCrecimiento,
+            theme: 'grid',
+            headStyles: { fillColor: [52, 58, 64] }
+        });
+
+        doc.save("Reporte_Alimentacion_Vannamei.pdf");
+    }
+</script>
+</body>
+</html>
