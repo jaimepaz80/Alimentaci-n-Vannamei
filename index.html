@@ -58,7 +58,7 @@
                             <tr>
                                 <th>Hora</th>
                                 <th>% de Ración</th>
-                                <th>Cantidad a Suministrar (kg)</th>
+                                <th>Cantidad a Suministrar (g)</th>
                             </tr>
                         </thead>
                         <tbody id="bodyTablaHoras"></tbody>
@@ -75,7 +75,7 @@
                                 <th>Día</th>
                                 <th>Peso Promedio (g)</th>
                                 <th>Peso Ganado (g)</th>
-                                <th>Alimento Total Diario (kg)</th>
+                                <th>Alimento Total Diario (g)</th>
                                 <th>% Tasa de Alimentación</th>
                             </tr>
                         </thead>
@@ -88,7 +88,6 @@
 </div>
 
 <script>
-    // Porcentajes de ración diaria basados en cronograma de distribución
     const horarioAlimentacion = [
         { hora: "12:00 am", porc: 0.018 },
         { hora: "02:00 am", porc: 0.045 },
@@ -108,7 +107,6 @@
     let pdfDataHoras = [];
 
     function calcularGananciaTGC(peso, temp) {
-        // Modelo TGC Optimizando Stanzas (Powell et al., 2019 Litopenaeus vannamei)
         let exp, tgc;
         if (peso < 7.5) {
             exp = 0.416;
@@ -141,57 +139,54 @@
         pdfDataHoras = [];
 
         let dia = 1;
-        let alimentoDiaUnoKg = 0;
+        let alimentoDiaUnoGramos = 0;
 
-        // Calculo de Tabla 1: Proyección
+        // Tabla 1: Proyección
         while (pesoActual < pesoCosecha) {
             let pesoNuevo = calcularGananciaTGC(pesoActual, temperatura);
             let pesoGanado = pesoNuevo - pesoActual;
             
-            // Cantidad de alimento total = Peso ganado * FCA * Num Camarones (kg)
             let alimentoDiarioGramosCamaron = pesoGanado * fca;
-            let alimentoTotalDiarioKg = (alimentoDiarioGramosCamaron * cantidad) / 1000;
+            let alimentoTotalDiarioGramos = alimentoDiarioGramosCamaron * cantidad; // Cálculo directo en gramos
             let tasaAlimentacion = (alimentoDiarioGramosCamaron / pesoActual) * 100;
 
             if (dia === 1) {
-                alimentoDiaUnoKg = alimentoTotalDiarioKg;
+                alimentoDiaUnoGramos = alimentoTotalDiarioGramos;
             }
 
-            // Inserción en Tabla HTML
             let tr = `<tr>
                 <td>${dia}</td>
                 <td>${pesoActual.toFixed(2)}</td>
                 <td>${pesoGanado.toFixed(3)}</td>
-                <td>${alimentoTotalDiarioKg.toFixed(2)}</td>
+                <td>${alimentoTotalDiarioGramos.toFixed(2)}</td>
                 <td>${tasaAlimentacion.toFixed(2)}%</td>
             </tr>`;
             bodyCrecimiento.innerHTML += tr;
 
-            // Almacenar para PDF
             pdfDataCrecimiento.push([
                 dia, 
                 pesoActual.toFixed(2), 
                 pesoGanado.toFixed(3), 
-                alimentoTotalDiarioKg.toFixed(2), 
+                alimentoTotalDiarioGramos.toFixed(2), 
                 tasaAlimentacion.toFixed(2) + "%"
             ]);
 
             pesoActual = pesoNuevo;
             dia++;
             
-            if(dia > 365) break; // Límite de seguridad
+            if(dia > 365) break; 
         }
 
-        // Cálculo de Tabla 2: Horarios para el Peso Actual (Día 1)
+        // Tabla 2: Distribución Horaria para el Peso Actual
         let totalChequeo = 0;
         horarioAlimentacion.forEach(item => {
-            let cantidadSuministrar = alimentoDiaUnoKg * item.porc;
+            let cantidadSuministrar = alimentoDiaUnoGramos * item.porc;
             totalChequeo += cantidadSuministrar;
 
             let tr = `<tr>
                 <td>${item.hora}</td>
                 <td>${(item.porc * 100).toFixed(1)}%</td>
-                <td>${cantidadSuministrar.toFixed(2)} kg</td>
+                <td>${cantidadSuministrar.toFixed(2)} g</td>
             </tr>`;
             bodyHoras.innerHTML += tr;
 
@@ -206,7 +201,7 @@
         bodyHoras.innerHTML += `<tr class="table-secondary fw-bold">
             <td>TOTAL</td>
             <td>100.0%</td>
-            <td>${totalChequeo.toFixed(2)} kg</td>
+            <td>${totalChequeo.toFixed(2)} g</td>
         </tr>`;
         pdfDataHoras.push(["TOTAL", "100.0%", totalChequeo.toFixed(2)]);
 
@@ -219,17 +214,17 @@
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
 
-        // Titulo general
+        // Título del reporte
         doc.setFontSize(14);
         doc.text("Reporte Técnico: Proyección y Sincronización de Alimentación", 14, 15);
 
-        // Tabla de Distribución Horaria
+        // Tabla Horaria
         doc.setFontSize(11);
         doc.text("Ración Diaria para el Peso Actual (Distribución Horaria)", 14, 25);
         
         doc.autoTable({
             startY: 30,
-            head: [['Hora', '% de Ración', 'Cantidad a Suministrar (kg)']],
+            head: [['Hora', '% de Ración', 'Cantidad a Suministrar (g)']],
             body: pdfDataHoras,
             theme: 'grid',
             headStyles: { fillColor: [52, 58, 64] }
@@ -241,7 +236,7 @@
 
         doc.autoTable({
             startY: finalY + 15,
-            head: [['Día', 'Peso (g)', 'Ganancia (g)', 'Alimento Diario (kg)', '% Tasa']],
+            head: [['Día', 'Peso (g)', 'Ganancia (g)', 'Alimento Diario (g)', '% Tasa']],
             body: pdfDataCrecimiento,
             theme: 'grid',
             headStyles: { fillColor: [52, 58, 64] }
