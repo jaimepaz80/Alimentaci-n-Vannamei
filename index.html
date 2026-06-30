@@ -130,7 +130,7 @@
 
     let pdfDataCrecimiento = [];
     let pdfDataHoras = [];
-    let pdfData7DiasAlimento = []; // Almacenamiento interno para el nuevo reporte de 7 días
+    let pdfData7DiasAlimento = []; 
     let chartCrecimiento = null;
 
     function calcularGananciaTGC(peso, temp) {
@@ -181,7 +181,6 @@
             let pesoGanado = pesoNuevo - pesoActual;
             
             let alimentoDiarioGramosCamaron = pesoGanado * fca;
-            // Aplicación del factor de corrección solicitado a la cantidad total de alimento
             let alimentoTotalDiarioGramos = alimentoDiarioGramosCamaron * cantidad * factorCorreccion;
             let tasaAlimentacion = (alimentoDiarioGramosCamaron / pesoActual) * 100;
 
@@ -189,7 +188,6 @@
                 alimentoDiaUnoGramos = alimentoTotalDiarioGramos;
             }
 
-            // Guardar datos de alimento para los primeros 7 días
             if (dia <= 7) {
                 pdfData7DiasAlimento.push({ dia: dia, totalGramos: alimentoTotalDiarioGramos });
             }
@@ -361,7 +359,6 @@
         doc.save("Reporte_Alimentacion_Vannamei.pdf");
     }
 
-    // Nueva función independiente para el reporte de alimentación de 7 días solicitado
     function descargarPDF7Dias() {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF('p', 'mm', 'a4');
@@ -373,15 +370,13 @@
 
         doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
-        doc.text("Cantidades de alimento distribuidas por hora (g) incluyendo factor de corrección.", 14, 22);
+        doc.text("Cantidades de alimento distribuidas por hora (g) con factor de corrección aplicado.", 14, 22);
 
-        // Configuración de encabezados dinámicos basándose en los días calculados
         let columnasEncabezado = ['Hora', '%'];
         pdfData7DiasAlimento.forEach(item => {
             columnasEncabezado.push(`Día ${item.dia}`);
         });
 
-        // Construcción de filas de datos
         let filasDatos = [];
         let acumuladorTotales = new Array(pdfData7DiasAlimento.length).fill(0);
 
@@ -395,7 +390,6 @@
             filasDatos.push(fila);
         });
 
-        // Adición de fila final de totales
         let filaFinalTotales = ['TOTAL', '100.0%'];
         acumuladorTotales.forEach(totalDia => {
             filaFinalTotales.push(totalDia.toFixed(2));
@@ -417,3 +411,4 @@
 </script>
 </body>
 </html>
+
