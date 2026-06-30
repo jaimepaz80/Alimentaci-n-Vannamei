@@ -46,8 +46,13 @@
                     <label>FCA esperado</label>
                     <input type="number" id="fca" class="form-control" value="1.5" step="0.01" min="0.1">
                 </div>
+                <div class="mb-3">
+                    <label>Factor de corrección</label>
+                    <input type="number" id="factorCorreccion" class="form-control" value="1.00" step="0.01" min="0" max="2">
+                </div>
                 <button class="btn btn-primary w-100 mb-2" onclick="generarTablas()">Generar Proyección</button>
-                <button class="btn btn-success w-100" id="btnDescargar" style="display:none;" onclick="descargarPDF()">Descargar en PDF</button>
+                <button class="btn btn-success w-100 mb-2" id="btnDescargar" style="display:none;" onclick="descargarPDF()">Descargar en PDF</button>
+                <button class="btn btn-info w-100" id="btnDescargar7Dias" style="display:none;" onclick="descargarPDF7Dias()">Descargar Reporte 7 Días</button>
             </div>
             
             <div class="card p-3" id="tabla2Container" style="display:none;">
@@ -125,6 +130,7 @@
 
     let pdfDataCrecimiento = [];
     let pdfDataHoras = [];
+    let pdfData7DiasAlimento = []; // Almacenamiento interno para el nuevo reporte de 7 días
     let chartCrecimiento = null;
 
     function calcularGananciaTGC(peso, temp) {
@@ -143,6 +149,7 @@
         const pesoCosecha = parseFloat(document.getElementById('pesoCosecha').value);
         const temperatura = parseFloat(document.getElementById('temperatura').value);
         const fca = parseFloat(document.getElementById('fca').value);
+        const factorCorreccion = parseFloat(document.getElementById('factorCorreccion').value) || 1;
 
         if (isNaN(cantidad) || isNaN(pesoActual) || isNaN(pesoCosecha) || isNaN(temperatura) || isNaN(fca) || pesoActual >= pesoCosecha) {
             alert("Por favor revise los parámetros de entrada. El peso actual debe ser menor al peso de cosecha.");
@@ -156,6 +163,7 @@
         
         pdfDataCrecimiento = [];
         pdfDataHoras = [];
+        pdfData7DiasAlimento = [];
 
         let dia = 1;
         let alimentoDiaUnoGramos = 0;
@@ -173,11 +181,17 @@
             let pesoGanado = pesoNuevo - pesoActual;
             
             let alimentoDiarioGramosCamaron = pesoGanado * fca;
-            let alimentoTotalDiarioGramos = alimentoDiarioGramosCamaron * cantidad;
+            // Aplicación del factor de corrección solicitado a la cantidad total de alimento
+            let alimentoTotalDiarioGramos = alimentoDiarioGramosCamaron * cantidad * factorCorreccion;
             let tasaAlimentacion = (alimentoDiarioGramosCamaron / pesoActual) * 100;
 
             if (dia === 1) {
                 alimentoDiaUnoGramos = alimentoTotalDiarioGramos;
+            }
+
+            // Guardar datos de alimento para los primeros 7 días
+            if (dia <= 7) {
+                pdfData7DiasAlimento.push({ dia: dia, totalGramos: alimentoTotalDiarioGramos });
             }
 
             let tr = `<tr>
@@ -225,6 +239,7 @@
         document.getElementById('tabla2Container').style.display = "block";
         document.getElementById('graficoContainer').style.display = "block";
         document.getElementById('btnDescargar').style.display = "block";
+        document.getElementById('btnDescargar7Dias').style.display = "block";
 
         // Renderizar el gráfico
         renderizarGrafico(arrayDias, arrayPesos);
@@ -256,7 +271,7 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: false, // Fundamental para que html2canvas o toDataURL lo capturen instantáneamente
+                animation: false, 
                 plugins: {
                     legend: { position: 'top' },
                     annotation: {
@@ -311,7 +326,7 @@
             body: pdfDataHoras,
             theme: 'grid',
             headStyles: { fillColor: [52, 58, 64] },
-            margin: { left: 14, right: 100 } // La hacemos más angosta para dejar espacio o centrar
+            margin: { left: 14, right: 100 } 
         });
 
         // 2. Gráfico (Capturado del Canvas)
@@ -344,6 +359,60 @@
         });
 
         doc.save("Reporte_Alimentacion_Vannamei.pdf");
+    }
+
+    // Nueva función independiente para el reporte de alimentación de 7 días solicitado
+    function descargarPDF7Dias() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('p', 'mm', 'a4');
+        const anchoPagina = doc.internal.pageSize.getWidth();
+
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.text("Reporte de Alimentación - Plan de 7 Días", anchoPagina / 2, 15, { align: "center" });
+
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.text("Cantidades de alimento distribuidas por hora (g) incluyendo factor de corrección.", 14, 22);
+
+        // Configuración de encabezados dinámicos basándose en los días calculados
+        let columnasEncabezado = ['Hora', '%'];
+        pdfData7DiasAlimento.forEach(item => {
+            columnasEncabezado.push(`Día ${item.dia}`);
+        });
+
+        // Construcción de filas de datos
+        let filasDatos = [];
+        let acumuladorTotales = new Array(pdfData7DiasAlimento.length).fill(0);
+
+        horarioAlimentacion.forEach(itemHora => {
+            let fila = [itemHora.hora, (itemHora.porc * 100).toFixed(1) + "%"];
+            pdfData7DiasAlimento.forEach((itemDia, index) => {
+                let calculadoPorHora = itemDia.totalGramos * itemHora.porc;
+                acumuladorTotales[index] += calculadoPorHora;
+                fila.push(calculadoPorHora.toFixed(2));
+            });
+            filasDatos.push(fila);
+        });
+
+        // Adición de fila final de totales
+        let filaFinalTotales = ['TOTAL', '100.0%'];
+        acumuladorTotales.forEach(totalDia => {
+            filaFinalTotales.push(totalDia.toFixed(2));
+        });
+        filasDatos.push(filaFinalTotales);
+
+        doc.autoTable({
+            startY: 26,
+            head: [columnasEncabezado],
+            body: filasDatos,
+            theme: 'grid',
+            headStyles: { fillColor: [33, 37, 41], halign: 'center' },
+            bodyStyles: { halign: 'center' },
+            styles: { fontSize: 8.5 }
+        });
+
+        doc.save("Reporte_Alimentacion_7_Dias.pdf");
     }
 </script>
 </body>
