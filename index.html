@@ -31,10 +31,12 @@
         </div>
         <div class="mb-3">
             <label>Contraseña</label>
-            <input type="password" id="loginPassword" class="form-control" required>
+            <div class="input-group">
+                <input type="password" id="loginPassword" class="form-control" required>
+                <button class="btn btn-outline-secondary" type="button" id="togglePassword" onclick="togglePasswordVisibility()">👁️</button>
+            </div>
         </div>
         <button class="btn btn-primary w-100 mb-2" onclick="iniciarSesion()">Iniciar Sesión</button>
-        <button class="btn btn-outline-secondary w-100" onclick="registrarUsuario()">Registrar Cuenta Nueva</button>
         <div id="loginError" class="text-danger mt-2 small text-center"></div>
     </div>
 </div>
@@ -153,7 +155,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyCONuLNq9rqyO1fKcc3ZjBaY5P8RQIM0T4",
@@ -174,15 +176,20 @@
             .catch(error => { document.getElementById('loginError').innerText = error.message; });
     }
 
-    window.registrarUsuario = function() {
-        const email = document.getElementById('loginEmail').value;
-        const pass = document.getElementById('loginPassword').value;
-        createUserWithEmailAndPassword(auth, email, pass)
-            .catch(error => { document.getElementById('loginError').innerText = error.message; });
-    }
-
     window.cerrarSesion = function() {
         signOut(auth);
+    }
+
+    window.togglePasswordVisibility = function() {
+        const passInput = document.getElementById('loginPassword');
+        const btn = document.getElementById('togglePassword');
+        if (passInput.type === 'password') {
+            passInput.type = 'text';
+            btn.innerText = '🙈';
+        } else {
+            passInput.type = 'password';
+            btn.innerText = '👁️';
+        }
     }
 
     onAuthStateChanged(auth, user => {
@@ -277,14 +284,13 @@
 
         datosLunarActual = calcularFaseLunar(fechaStr);
         const factorLunar = datosLunarActual.porc / 100;
-        const tempBase = 28.0; // Temperatura base para simulación sin ajuste térmico
+        const tempBase = 28.0;
 
         document.getElementById('lunarInfoContainer').innerHTML = `
             <strong>Fase Lunar:</strong> ${datosLunarActual.fase} (${datosLunarActual.edad.toFixed(1)} días)<br>
             <strong>% Condición Comer:</strong> ${datosLunarActual.porc.toFixed(1)}%
         `;
 
-        // 1. Matriz de los 4 Escenarios para el Día 1
         const bodyEscenarios = document.getElementById('bodyTablaEscenarios');
         bodyEscenarios.innerHTML = "";
 
@@ -319,7 +325,6 @@
             </tr>`;
         });
 
-        // 2. Tabla Proyección Principal
         const bodyCrecimiento = document.getElementById('bodyTablaCrecimiento');
         const bodyHoras = document.getElementById('bodyTablaHoras');
         bodyCrecimiento.innerHTML = "";
@@ -366,7 +371,6 @@
             if(dia > 365) break; 
         }
 
-        // 3. Distribución Horaria (Día 1)
         let totalChequeoKg = 0;
         horarioAlimentacion.forEach(item => {
             let cantidadSuministrarKg = alimentoDiaUnoKgPrincipal * item.porc;
