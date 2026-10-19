@@ -15,6 +15,7 @@
         .table-responsive { max-height: 500px; overflow-y: auto; }
         thead { position: sticky; top: 0; background-color: #343a40; color: white; }
         .math-model { background-color: #e9ecef; padding: 10px; border-radius: 5px; font-size: 0.9em; text-align: center;}
+        .lunar-info { background-color: #e2f0d9; padding: 10px; border-radius: 5px; font-size: 0.9em; margin-bottom: 15px; }
     </style>
 </head>
 <body>
@@ -26,6 +27,10 @@
         <div class="col-lg-3 col-md-4">
             <div class="card p-3">
                 <h4>Parámetros de Cultivo</h4>
+                <div class="mb-3">
+                    <label>Fecha de Evaluación / Inicio</label>
+                    <input type="date" id="fechaCultivo" class="form-control">
+                </div>
                 <div class="mb-3">
                     <label>Cantidad de camarones</label>
                     <input type="number" id="cantidad" class="form-control" value="100000" step="1" min="1">
@@ -57,6 +62,7 @@
             
             <div class="card p-3" id="tabla2Container" style="display:none;">
                 <h5 class="text-center">Distribución Horaria</h5>
+                <div id="lunarInfoContainer" class="lunar-info border-start border-success border-4"></div>
                 <p class="text-muted small text-center">Calculado para el Día 1</p>
                 <div class="table-responsive">
                     <table class="table table-bordered table-sm table-striped" id="tablaHoras">
@@ -119,6 +125,9 @@
 </div>
 
 <script>
+    // Inicializar fecha actual por defecto en el input
+    document.getElementById('fechaCultivo').valueAsDate = new Date();
+
     const horarioAlimentacion = [
         { hora: "12:00 am", porc: 0.018 }, { hora: "02:00 am", porc: 0.045 },
         { hora: "04:00 am", porc: 0.054 }, { hora: "06:00 am", porc: 0.072 },
@@ -132,6 +141,7 @@
     let pdfDataHoras = [];
     let pdfData7DiasAlimento = []; 
     let chartCrecimiento = null;
+    let datosLunarActual = null;
 
     function calcularGananciaTGC(peso, temp) {
         let exp, tgc;
@@ -143,7 +153,57 @@
         return Math.pow(Math.pow(peso, exp) + (tgc / 100) * temp, 1 / exp);
     }
 
+    function calcularFaseLunar(fechaStr) {
+        const fecha = new Date(fechaStr + 'T00:00:00Z');
+        const refDate = new Date(Date.UTC(2024, 0, 11, 11, 57, 0)); // Luna nueva de referencia
+        const synodicMonth = 29.53058867;
+        const diffTime = fecha.getTime() - refDate.getTime();
+        const diffDays = diffTime / (1000 * 60 * 60 * 24);
+        let edad = diffDays % synodicMonth;
+        if (edad < 0) edad += synodicMonth;
+
+        // Puntos de control de la fase lunar y % de camarones en condiciones de comer
+        const puntos = [
+            { edad: 0.00, porc: 20, fase: "Luna Nueva" },
+            { edad: 7.38, porc: 70, fase: "Cuarto Creciente" },
+            { edad: 14.77, porc: 70, fase: "Luna Llena" },
+            { edad: 22.15, porc: 50, fase: "Cuarto Menguante" },
+            { edad: 29.53, porc: 20, fase: "Luna Nueva" }
+        ];
+
+        let porcInterpolado = 20;
+        let nombreFase = "Luna Nueva";
+
+        if (edad < 3.69 || edad > 25.84) {
+            nombreFase = "Luna Nueva";
+        } else if (edad >= 3.69 && edad < 11.08) {
+            nombreFase = "Cuarto Creciente";
+        } else if (edad >= 11.08 && edad < 18.46) {
+            nombreFase = "Luna Llena";
+        } else {
+            nombreFase = "Cuarto Menguante";
+        }
+
+        for (let i = 0; i < puntos.length - 1; i++) {
+            if (edad >= puntos[i].edad && edad <= puntos[i+1].edad) {
+                let x0 = puntos[i].edad;
+                let y0 = puntos[i].porc;
+                let x1 = puntos[i+1].edad;
+                let y1 = puntos[i+1].porc;
+                porcInterpolado = y0 + ((edad - x0) / (x1 - x0)) * (y1 - y0);
+                break;
+            }
+        }
+
+        return {
+            edad: edad,
+            fase: nombreFase,
+            porc: porcInterpolado
+        };
+    }
+
     function generarTablas() {
+        const fechaStr = document.getElementById('fechaCultivo').value;
         const cantidad = parseFloat(document.getElementById('cantidad').value);
         let pesoActual = parseFloat(document.getElementById('pesoActual').value);
         const pesoCosecha = parseFloat(document.getElementById('pesoCosecha').value);
@@ -151,10 +211,19 @@
         const fca = parseFloat(document.getElementById('fca').value);
         const factorCorreccion = parseFloat(document.getElementById('factorCorreccion').value) || 1;
 
-        if (isNaN(cantidad) || isNaN(pesoActual) || isNaN(pesoCosecha) || isNaN(temperatura) || isNaN(fca) || pesoActual >= pesoCosecha) {
-            alert("Por favor revise los parámetros de entrada. El peso actual debe ser menor al peso de cosecha.");
+        if (!fechaStr || isNaN(cantidad) || isNaN(pesoActual) || isNaN(pesoCosecha) || isNaN(temperatura) || isNaN(fca) || pesoActual >= pesoCosecha) {
+            alert("Por favor revise los parámetros de entrada. La fecha es obligatoria y el peso actual debe ser menor al peso de cosecha.");
             return;
         }
+
+        datosLunarActual = calcularFaseLunar(fechaStr);
+        const factorLunar = datosLunarActual.porc / 100;
+
+        // Mostrar información lunar en UI
+        document.getElementById('lunarInfoContainer').innerHTML = `
+            <strong>Fase Lunar:</strong> ${datosLunarActual.fase} (${datosLunarActual.edad.toFixed(1)} días)<br>
+            <strong>% Condición Comer:</strong> ${datosLunarActual.porc.toFixed(1)}%
+        `;
 
         const bodyCrecimiento = document.getElementById('bodyTablaCrecimiento');
         const bodyHoras = document.getElementById('bodyTablaHoras');
@@ -168,7 +237,6 @@
         let dia = 1;
         let alimentoDiaUnoGramos = 0;
         
-        // Arreglos para el gráfico
         let arrayDias = [];
         let arrayPesos = [];
 
@@ -181,7 +249,8 @@
             let pesoGanado = pesoNuevo - pesoActual;
             
             let alimentoDiarioGramosCamaron = pesoGanado * fca;
-            let alimentoTotalDiarioGramos = alimentoDiarioGramosCamaron * cantidad * factorCorreccion;
+            // Aplicar factor de corrección y factor lunar en el día 1 (o en la proyección general según corresponda)
+            let alimentoTotalDiarioGramos = alimentoDiarioGramosCamaron * cantidad * factorCorreccion * (dia === 1 ? factorLunar : 1);
             let tasaAlimentacion = (alimentoDiarioGramosCamaron / pesoActual) * 100;
 
             if (dia === 1) {
@@ -239,7 +308,6 @@
         document.getElementById('btnDescargar').style.display = "block";
         document.getElementById('btnDescargar7Dias').style.display = "block";
 
-        // Renderizar el gráfico
         renderizarGrafico(arrayDias, arrayPesos);
     }
 
@@ -309,17 +377,22 @@
         const doc = new jsPDF('p', 'mm', 'a4');
         const anchoPagina = doc.internal.pageSize.getWidth();
 
-        // Encabezado
         doc.setFontSize(16);
         doc.setFont("helvetica", "bold");
         doc.text("Reporte: Proyección y Sincronización de Alimentación", anchoPagina / 2, 15, { align: "center" });
 
-        // 1. Tabla Horaria
+        if (datosLunarActual) {
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "italic");
+            doc.text(`Ajuste Lunar: ${datosLunarActual.fase} - Condición de Comer: ${datosLunarActual.porc.toFixed(1)}%`, 14, 22);
+        }
+
         doc.setFontSize(12);
-        doc.text("Distribución Horaria (Día 1)", 14, 25);
+        doc.setFont("helvetica", "bold");
+        doc.text("Distribución Horaria (Día 1)", 14, 28);
         
         doc.autoTable({
-            startY: 28,
+            startY: 31,
             head: [['Hora', '% de Ración', 'Suministro (g)']],
             body: pdfDataHoras,
             theme: 'grid',
@@ -327,22 +400,18 @@
             margin: { left: 14, right: 100 } 
         });
 
-        // 2. Gráfico (Capturado del Canvas)
         let finalYHoras = doc.lastAutoTable.finalY || 30;
         const canvas = document.getElementById('graficoCrecimiento');
         const imgData = canvas.toDataURL('image/png', 1.0);
         
-        // Modelos Matemáticos Texto en PDF
         doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
         doc.text("Modelos Matemáticos aplicados (TGC):", 14, finalYHoras + 10);
         doc.text("Fase < 7.5g: P_n = [P_actual^0.416 + (0.00151 * T)]^(1/0.416)", 14, finalYHoras + 15);
         doc.text("Fase >= 7.5g: P_n = [P_actual^0.952 + (0.00807 * T)]^(1/0.952)", 14, finalYHoras + 20);
 
-        // Insertar imagen del gráfico en el PDF
         doc.addImage(imgData, 'PNG', 14, finalYHoras + 25, 180, 80);
 
-        // 3. Tabla de Proyección (Forzamos a nueva página si no hay espacio)
         doc.addPage();
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
@@ -370,7 +439,7 @@
 
         doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
-        doc.text("Cantidades de alimento distribuidas por hora (g) con factor de corrección aplicado.", 14, 22);
+        doc.text("Cantidades de alimento distribuidas por hora (g) con factor de corrección y ajuste lunar aplicados.", 14, 22);
 
         let columnasEncabezado = ['Hora', '%'];
         pdfData7DiasAlimento.forEach(item => {
@@ -411,4 +480,3 @@
 </script>
 </body>
 </html>
-
