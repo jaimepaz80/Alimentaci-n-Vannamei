@@ -16,19 +16,42 @@
         thead { position: sticky; top: 0; background-color: #343a40; color: white; }
         .math-model { background-color: #e9ecef; padding: 10px; border-radius: 5px; font-size: 0.9em; text-align: center;}
         .lunar-info { background-color: #e2f0d9; padding: 10px; border-radius: 5px; font-size: 0.9em; margin-bottom: 15px; }
+        #appContainer, #logoutBtn { display: none; }
     </style>
 </head>
 <body>
 
-<div class="container-fluid">
-    <h2 class="text-center mb-4">Proyección de Alimentación y Sincronización Horaria</h2>
+<!-- SECCIÓN DE INICIO DE SESIÓN -->
+<div class="container mt-5" id="loginContainer" style="max-width: 400px;">
+    <div class="card p-4">
+        <h3 class="text-center mb-3">Acceso al Sistema</h3>
+        <div class="mb-3">
+            <label>Correo Electrónico</label>
+            <input type="email" id="loginEmail" class="form-control" required>
+        </div>
+        <div class="mb-3">
+            <label>Contraseña</label>
+            <input type="password" id="loginPassword" class="form-control" required>
+        </div>
+        <button class="btn btn-primary w-100 mb-2" onclick="iniciarSesion()">Iniciar Sesión</button>
+        <button class="btn btn-outline-secondary w-100" onclick="registrarUsuario()">Registrar Cuenta Nueva</button>
+        <div id="loginError" class="text-danger mt-2 small text-center"></div>
+    </div>
+</div>
+
+<!-- APLICACIÓN PRINCIPAL -->
+<div class="container-fluid" id="appContainer">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Proyección de Alimentación y Sincronización Horaria</h2>
+        <button class="btn btn-danger btn-sm" id="logoutBtn" onclick="cerrarSesion()">Cerrar Sesión</button>
+    </div>
 
     <div class="row">
         <div class="col-lg-3 col-md-4">
             <div class="card p-3">
                 <h4>Parámetros de Cultivo</h4>
                 <div class="mb-3">
-                    <label>Fecha de Evaluación / Inicio</label>
+                    <label>Fecha de Evaluación</label>
                     <input type="date" id="fechaCultivo" class="form-control">
                 </div>
                 <div class="mb-3">
@@ -70,7 +93,7 @@
                             <tr>
                                 <th>Hora</th>
                                 <th>%</th>
-                                <th>Suministro</th>
+                                <th>Suministro (kg)</th>
                             </tr>
                         </thead>
                         <tbody id="bodyTablaHoras" class="text-center"></tbody>
@@ -80,25 +103,28 @@
         </div>
 
         <div class="col-lg-9 col-md-8">
+            <div class="card p-3" id="escenariosContainer" style="display:none;">
+                <h4>Matriz de Escenarios (Día 1)</h4>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-striped text-center">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Escenario</th>
+                                <th>Temperatura</th>
+                                <th>Fase Lunar</th>
+                                <th>Biomasa Viva (kg)</th>
+                                <th>Tasa Alim. (%)</th>
+                                <th>Alimento (kg)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bodyTablaEscenarios"></tbody>
+                    </table>
+                </div>
+            </div>
+
             <div class="card p-3" id="graficoContainer" style="display:none;">
                 <h4>Curva de Crecimiento (Modelo TGC)</h4>
-                
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <div class="math-model border-start border-primary border-4">
-                            <strong>Fase < 7.5g (Exp: 0.416, Coef: 0.151)</strong><br>
-                            P<sub>n</sub> = [ P<sub>actual</sub><sup>0.416</sup> + (0.00151 &times; T) ] <sup>(1 / 0.416)</sup>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="math-model border-start border-success border-4">
-                            <strong>Fase &ge; 7.5g (Exp: 0.952, Coef: 0.807)</strong><br>
-                            P<sub>n</sub> = [ P<sub>actual</sub><sup>0.952</sup> + (0.00807 &times; T) ] <sup>(1 / 0.952)</sup>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="position: relative; height:400px; width:100%">
+                <div style="position: relative; height:350px; width:100%">
                     <canvas id="graficoCrecimiento"></canvas>
                 </div>
             </div>
@@ -111,9 +137,10 @@
                             <tr>
                                 <th>Día</th>
                                 <th>Peso Promedio (g)</th>
+                                <th>Biomasa Viva (kg)</th>
                                 <th>Peso Ganado (g)</th>
-                                <th>Alimento Total Diario (g)</th>
-                                <th>% Tasa de Alimentación</th>
+                                <th>Alimento Diario (kg)</th>
+                                <th>% Tasa Alimentación</th>
                             </tr>
                         </thead>
                         <tbody id="bodyTablaCrecimiento"></tbody>
@@ -124,17 +151,62 @@
     </div>
 </div>
 
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyCONuLNq9rqyO1fKcc3ZjBaY5P8RQIM0T4",
+        authDomain: "alimentacionvannamei.firebaseapp.com",
+        projectId: "alimentacionvannamei",
+        storageBucket: "alimentacionvannamei.firebasestorage.app",
+        messagingSenderId: "626049558643",
+        appId: "1:626049558643:web:5611fb08c1d3be8cd0a206"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    window.iniciarSesion = function() {
+        const email = document.getElementById('loginEmail').value;
+        const pass = document.getElementById('loginPassword').value;
+        signInWithEmailAndPassword(auth, email, pass)
+            .catch(error => { document.getElementById('loginError').innerText = error.message; });
+    }
+
+    window.registrarUsuario = function() {
+        const email = document.getElementById('loginEmail').value;
+        const pass = document.getElementById('loginPassword').value;
+        createUserWithEmailAndPassword(auth, email, pass)
+            .catch(error => { document.getElementById('loginError').innerText = error.message; });
+    }
+
+    window.cerrarSesion = function() {
+        signOut(auth);
+    }
+
+    onAuthStateChanged(auth, user => {
+        if (user) {
+            document.getElementById('loginContainer').style.display = 'none';
+            document.getElementById('appContainer').style.display = 'block';
+            document.getElementById('logoutBtn').style.display = 'block';
+        } else {
+            document.getElementById('loginContainer').style.display = 'block';
+            document.getElementById('appContainer').style.display = 'none';
+            document.getElementById('logoutBtn').style.display = 'none';
+        }
+    });
+</script>
+
 <script>
-    // Inicializar fecha actual por defecto en el input
     document.getElementById('fechaCultivo').valueAsDate = new Date();
 
     const horarioAlimentacion = [
-        { hora: "12:00 am", porc: 0.018 }, { hora: "02:00 am", porc: 0.045 },
-        { hora: "04:00 am", porc: 0.054 }, { hora: "06:00 am", porc: 0.072 },
-        { hora: "08:00 am", porc: 0.018 }, { hora: "10:00 am", porc: 0.036 },
-        { hora: "12:00 pm", porc: 0.234 }, { hora: "02:00 pm", porc: 0.180 },
-        { hora: "04:00 pm", porc: 0.108 }, { hora: "06:00 pm", porc: 0.090 },
-        { hora: "08:00 pm", porc: 0.072 }, { hora: "10:00 pm", porc: 0.072 }
+        { hora: "12 M", porc: 0.34 },
+        { hora: "2:00 PM", porc: 0.27 },
+        { hora: "4:00 PM", porc: 0.15 },
+        { hora: "6:00 PM", porc: 0.14 },
+        { hora: "8:00 PM", porc: 0.10 }
     ];
 
     let pdfDataCrecimiento = [];
@@ -155,14 +227,12 @@
 
     function calcularFaseLunar(fechaStr) {
         const fecha = new Date(fechaStr + 'T00:00:00Z');
-        const refDate = new Date(Date.UTC(2024, 0, 11, 11, 57, 0)); // Luna nueva de referencia
+        const refDate = new Date(Date.UTC(2024, 0, 11, 11, 57, 0));
         const synodicMonth = 29.53058867;
-        const diffTime = fecha.getTime() - refDate.getTime();
-        const diffDays = diffTime / (1000 * 60 * 60 * 24);
+        const diffDays = (fecha.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24);
         let edad = diffDays % synodicMonth;
         if (edad < 0) edad += synodicMonth;
 
-        // Puntos de control de la fase lunar y % de camarones en condiciones de comer
         const puntos = [
             { edad: 0.00, porc: 20, fase: "Luna Nueva" },
             { edad: 7.38, porc: 70, fase: "Cuarto Creciente" },
@@ -174,32 +244,21 @@
         let porcInterpolado = 20;
         let nombreFase = "Luna Nueva";
 
-        if (edad < 3.69 || edad > 25.84) {
-            nombreFase = "Luna Nueva";
-        } else if (edad >= 3.69 && edad < 11.08) {
-            nombreFase = "Cuarto Creciente";
-        } else if (edad >= 11.08 && edad < 18.46) {
-            nombreFase = "Luna Llena";
-        } else {
-            nombreFase = "Cuarto Menguante";
-        }
+        if (edad < 3.69 || edad > 25.84) nombreFase = "Luna Nueva";
+        else if (edad >= 3.69 && edad < 11.08) nombreFase = "Cuarto Creciente";
+        else if (edad >= 11.08 && edad < 18.46) nombreFase = "Luna Llena";
+        else nombreFase = "Cuarto Menguante";
 
         for (let i = 0; i < puntos.length - 1; i++) {
             if (edad >= puntos[i].edad && edad <= puntos[i+1].edad) {
-                let x0 = puntos[i].edad;
-                let y0 = puntos[i].porc;
-                let x1 = puntos[i+1].edad;
-                let y1 = puntos[i+1].porc;
+                let x0 = puntos[i].edad, y0 = puntos[i].porc;
+                let x1 = puntos[i+1].edad, y1 = puntos[i+1].porc;
                 porcInterpolado = y0 + ((edad - x0) / (x1 - x0)) * (y1 - y0);
                 break;
             }
         }
 
-        return {
-            edad: edad,
-            fase: nombreFase,
-            porc: porcInterpolado
-        };
+        return { edad, fase: nombreFase, porc: porcInterpolado };
     }
 
     function generarTablas() {
@@ -212,19 +271,55 @@
         const factorCorreccion = parseFloat(document.getElementById('factorCorreccion').value) || 1;
 
         if (!fechaStr || isNaN(cantidad) || isNaN(pesoActual) || isNaN(pesoCosecha) || isNaN(temperatura) || isNaN(fca) || pesoActual >= pesoCosecha) {
-            alert("Por favor revise los parámetros de entrada. La fecha es obligatoria y el peso actual debe ser menor al peso de cosecha.");
+            alert("Revise los parámetros de entrada. Fecha obligatoria y peso actual menor al de cosecha.");
             return;
         }
 
         datosLunarActual = calcularFaseLunar(fechaStr);
         const factorLunar = datosLunarActual.porc / 100;
+        const tempBase = 28.0; // Temperatura base para simulación sin ajuste térmico
 
-        // Mostrar información lunar en UI
         document.getElementById('lunarInfoContainer').innerHTML = `
             <strong>Fase Lunar:</strong> ${datosLunarActual.fase} (${datosLunarActual.edad.toFixed(1)} días)<br>
             <strong>% Condición Comer:</strong> ${datosLunarActual.porc.toFixed(1)}%
         `;
 
+        // 1. Matriz de los 4 Escenarios para el Día 1
+        const bodyEscenarios = document.getElementById('bodyTablaEscenarios');
+        bodyEscenarios.innerHTML = "";
+
+        const escenariosConfigs = [
+            { tempUso: tempBase, usarLunar: false, descTemp: "Sin (28°C)", descLunar: "Sin (100%)" },
+            { tempUso: temperatura, usarLunar: false, descTemp: `Con (${temperatura}°C)`, descLunar: "Sin (100%)" },
+            { tempUso: tempBase, usarLunar: true, descTemp: "Sin (28°C)", descLunar: `Con (${datosLunarActual.porc.toFixed(1)}%)` },
+            { tempUso: temperatura, usarLunar: true, descTemp: `Con (${temperatura}°C)`, descLunar: `Con (${datosLunarActual.porc.toFixed(1)}%)` }
+        ];
+
+        let alimentoDiaUnoKgPrincipal = 0;
+
+        escenariosConfigs.forEach((esc, idx) => {
+            let pNuevo = calcularGananciaTGC(pesoActual, esc.tempUso);
+            let pGanado = pNuevo - pesoActual;
+            let biomasaKg = (cantidad * pesoActual) / 1000;
+            let tasaAlim = (pGanado / pesoActual) * 100;
+            let alimentoGramoCamaron = pGanado * fca;
+            let alimKg = (alimentoGramoCamaron * cantidad * factorCorreccion * (esc.usarLunar ? factorLunar : 1)) / 1000;
+
+            if (idx === 3) {
+                alimentoDiaUnoKgPrincipal = alimKg;
+            }
+
+            bodyEscenarios.innerHTML += `<tr>
+                <td>Escenario ${idx + 1}</td>
+                <td>${esc.descTemp}</td>
+                <td>${esc.descLunar}</td>
+                <td>${biomasaKg.toFixed(2)} kg</td>
+                <td>${tasaAlim.toFixed(2)}%</td>
+                <td>${alimKg.toFixed(2)} kg</td>
+            </tr>`;
+        });
+
+        // 2. Tabla Proyección Principal
         const bodyCrecimiento = document.getElementById('bodyTablaCrecimiento');
         const bodyHoras = document.getElementById('bodyTablaHoras');
         bodyCrecimiento.innerHTML = "";
@@ -235,75 +330,65 @@
         pdfData7DiasAlimento = [];
 
         let dia = 1;
-        let alimentoDiaUnoGramos = 0;
-        
-        let arrayDias = [];
-        let arrayPesos = [];
+        let arrayDias = [], arrayPesos = [];
 
-        // Tabla 1: Proyección
-        while (pesoActual < pesoCosecha) {
+        let pesoSimulacion = pesoActual;
+        while (pesoSimulacion < pesoCosecha) {
             arrayDias.push(dia);
-            arrayPesos.push(pesoActual);
+            arrayPesos.push(pesoSimulacion);
 
-            let pesoNuevo = calcularGananciaTGC(pesoActual, temperatura);
-            let pesoGanado = pesoNuevo - pesoActual;
-            
-            let alimentoDiarioGramosCamaron = pesoGanado * fca;
-            // Aplicar factor de corrección y factor lunar en el día 1 (o en la proyección general según corresponda)
-            let alimentoTotalDiarioGramos = alimentoDiarioGramosCamaron * cantidad * factorCorreccion * (dia === 1 ? factorLunar : 1);
-            let tasaAlimentacion = (alimentoDiarioGramosCamaron / pesoActual) * 100;
-
-            if (dia === 1) {
-                alimentoDiaUnoGramos = alimentoTotalDiarioGramos;
-            }
+            let pesoNuevo = calcularGananciaTGC(pesoSimulacion, temperatura);
+            let pesoGanado = pesoNuevo - pesoSimulacion;
+            let biomasaVivaKg = (cantidad * pesoSimulacion) / 1000;
+            let tasaAlimentacion = (pesoGanado / pesoSimulacion) * 100;
+            let alimentoTotalDiarioKg = ((pesoGanado * fca) * cantidad * factorCorreccion * factorLunar) / 1000;
 
             if (dia <= 7) {
-                pdfData7DiasAlimento.push({ dia: dia, totalGramos: alimentoTotalDiarioGramos });
+                pdfData7DiasAlimento.push({ dia: dia, totalKg: alimentoTotalDiarioKg });
             }
 
-            let tr = `<tr>
+            bodyCrecimiento.innerHTML += `<tr>
                 <td>${dia}</td>
-                <td>${pesoActual.toFixed(2)}</td>
+                <td>${pesoSimulacion.toFixed(2)}</td>
+                <td>${biomasaVivaKg.toFixed(2)}</td>
                 <td>${pesoGanado.toFixed(3)}</td>
-                <td>${alimentoTotalDiarioGramos.toFixed(2)}</td>
+                <td>${alimentoTotalDiarioKg.toFixed(2)}</td>
                 <td>${tasaAlimentacion.toFixed(2)}%</td>
             </tr>`;
-            bodyCrecimiento.innerHTML += tr;
 
             pdfDataCrecimiento.push([
-                dia, pesoActual.toFixed(2), pesoGanado.toFixed(3), 
-                alimentoTotalDiarioGramos.toFixed(2), tasaAlimentacion.toFixed(2) + "%"
+                dia, pesoSimulacion.toFixed(2), biomasaVivaKg.toFixed(2), pesoGanado.toFixed(3), 
+                alimentoTotalDiarioKg.toFixed(2), tasaAlimentacion.toFixed(2) + "%"
             ]);
 
-            pesoActual = pesoNuevo;
+            pesoSimulacion = pesoNuevo;
             dia++;
             if(dia > 365) break; 
         }
 
-        // Tabla 2: Distribución Horaria
-        let totalChequeo = 0;
+        // 3. Distribución Horaria (Día 1)
+        let totalChequeoKg = 0;
         horarioAlimentacion.forEach(item => {
-            let cantidadSuministrar = alimentoDiaUnoGramos * item.porc;
-            totalChequeo += cantidadSuministrar;
+            let cantidadSuministrarKg = alimentoDiaUnoKgPrincipal * item.porc;
+            totalChequeoKg += cantidadSuministrarKg;
 
-            let tr = `<tr>
+            bodyHoras.innerHTML += `<tr>
                 <td>${item.hora}</td>
                 <td>${(item.porc * 100).toFixed(1)}%</td>
-                <td>${cantidadSuministrar.toFixed(2)} g</td>
+                <td>${cantidadSuministrarKg.toFixed(2)} kg</td>
             </tr>`;
-            bodyHoras.innerHTML += tr;
 
-            pdfDataHoras.push([item.hora, (item.porc * 100).toFixed(1) + "%", cantidadSuministrar.toFixed(2)]);
+            pdfDataHoras.push([item.hora, (item.porc * 100).toFixed(1) + "%", cantidadSuministrarKg.toFixed(2) + " kg"]);
         });
 
         bodyHoras.innerHTML += `<tr class="table-secondary fw-bold">
-            <td>TOTAL</td><td>100.0%</td><td>${totalChequeo.toFixed(2)} g</td>
+            <td>TOTAL</td><td>100.0%</td><td>${totalChequeoKg.toFixed(2)} kg</td>
         </tr>`;
-        pdfDataHoras.push(["TOTAL", "100.0%", totalChequeo.toFixed(2)]);
+        pdfDataHoras.push(["TOTAL", "100.0%", totalChequeoKg.toFixed(2) + " kg"]);
 
-        // Mostrar contenedores
         document.getElementById('tabla1Container').style.display = "block";
         document.getElementById('tabla2Container').style.display = "block";
+        document.getElementById('escenariosContainer').style.display = "block";
         document.getElementById('graficoContainer').style.display = "block";
         document.getElementById('btnDescargar').style.display = "block";
         document.getElementById('btnDescargar7Dias').style.display = "block";
@@ -313,10 +398,7 @@
 
     function renderizarGrafico(dias, pesos) {
         const ctx = document.getElementById('graficoCrecimiento').getContext('2d');
-        
-        if (chartCrecimiento) {
-            chartCrecimiento.destroy();
-        }
+        if (chartCrecimiento) chartCrecimiento.destroy();
 
         chartCrecimiento = new Chart(ctx, {
             type: 'line',
@@ -329,44 +411,16 @@
                     backgroundColor: 'rgba(13, 110, 253, 0.2)',
                     borderWidth: 3,
                     fill: true,
-                    tension: 0.3,
-                    pointRadius: 0,
-                    pointHitRadius: 10
+                    tension: 0.3
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: false, 
-                plugins: {
-                    legend: { position: 'top' },
-                    annotation: {
-                        annotations: {
-                            line1: {
-                                type: 'line',
-                                yMin: 7.5,
-                                yMax: 7.5,
-                                borderColor: 'rgb(255, 99, 132)',
-                                borderWidth: 2,
-                                borderDash: [5, 5],
-                                label: {
-                                    content: 'Punto de Inflexión (7.5 g)',
-                                    display: true,
-                                    position: 'start',
-                                    backgroundColor: 'rgba(255, 99, 132, 0.8)'
-                                }
-                            }
-                        }
-                    }
-                },
+                animation: false,
                 scales: {
-                    x: {
-                        title: { display: true, text: 'Días de Cultivo', font: { weight: 'bold' } }
-                    },
-                    y: {
-                        title: { display: true, text: 'Peso (g)', font: { weight: 'bold' } },
-                        min: 0
-                    }
+                    x: { title: { display: true, text: 'Días de Cultivo' } },
+                    y: { title: { display: true, text: 'Peso (g)' }, min: 0 }
                 }
             }
         });
@@ -393,24 +447,12 @@
         
         doc.autoTable({
             startY: 31,
-            head: [['Hora', '% de Ración', 'Suministro (g)']],
+            head: [['Hora', '% de Ración', 'Suministro (kg)']],
             body: pdfDataHoras,
             theme: 'grid',
             headStyles: { fillColor: [52, 58, 64] },
             margin: { left: 14, right: 100 } 
         });
-
-        let finalYHoras = doc.lastAutoTable.finalY || 30;
-        const canvas = document.getElementById('graficoCrecimiento');
-        const imgData = canvas.toDataURL('image/png', 1.0);
-        
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        doc.text("Modelos Matemáticos aplicados (TGC):", 14, finalYHoras + 10);
-        doc.text("Fase < 7.5g: P_n = [P_actual^0.416 + (0.00151 * T)]^(1/0.416)", 14, finalYHoras + 15);
-        doc.text("Fase >= 7.5g: P_n = [P_actual^0.952 + (0.00807 * T)]^(1/0.952)", 14, finalYHoras + 20);
-
-        doc.addImage(imgData, 'PNG', 14, finalYHoras + 25, 180, 80);
 
         doc.addPage();
         doc.setFontSize(12);
@@ -419,7 +461,7 @@
 
         doc.autoTable({
             startY: 20,
-            head: [['Día', 'Peso (g)', 'Ganancia (g)', 'Alimento Diario (g)', '% Tasa']],
+            head: [['Día', 'Peso (g)', 'Biomasa (kg)', 'Ganancia (g)', 'Alimento (kg)', '% Tasa']],
             body: pdfDataCrecimiento,
             theme: 'grid',
             headStyles: { fillColor: [52, 58, 64] }
@@ -437,14 +479,8 @@
         doc.setFont("helvetica", "bold");
         doc.text("Reporte de Alimentación - Plan de 7 Días", anchoPagina / 2, 15, { align: "center" });
 
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "normal");
-        doc.text("Cantidades de alimento distribuidas por hora (g) con factor de corrección y ajuste lunar aplicados.", 14, 22);
-
         let columnasEncabezado = ['Hora', '%'];
-        pdfData7DiasAlimento.forEach(item => {
-            columnasEncabezado.push(`Día ${item.dia}`);
-        });
+        pdfData7DiasAlimento.forEach(item => columnasEncabezado.push(`Día ${item.dia}`));
 
         let filasDatos = [];
         let acumuladorTotales = new Array(pdfData7DiasAlimento.length).fill(0);
@@ -452,17 +488,15 @@
         horarioAlimentacion.forEach(itemHora => {
             let fila = [itemHora.hora, (itemHora.porc * 100).toFixed(1) + "%"];
             pdfData7DiasAlimento.forEach((itemDia, index) => {
-                let calculadoPorHora = itemDia.totalGramos * itemHora.porc;
+                let calculadoPorHora = itemDia.totalKg * itemHora.porc;
                 acumuladorTotales[index] += calculadoPorHora;
-                fila.push(calculadoPorHora.toFixed(2));
+                fila.push(calculadoPorHora.toFixed(2) + " kg");
             });
             filasDatos.push(fila);
         });
 
         let filaFinalTotales = ['TOTAL', '100.0%'];
-        acumuladorTotales.forEach(totalDia => {
-            filaFinalTotales.push(totalDia.toFixed(2));
-        });
+        acumuladorTotales.forEach(totalDia => filaFinalTotales.push(totalDia.toFixed(2) + " kg"));
         filasDatos.push(filaFinalTotales);
 
         doc.autoTable({
